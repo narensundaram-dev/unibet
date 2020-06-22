@@ -1,0 +1,22 @@
+{
+    "workers": {
+        "value": 2,
+        "description": "Max. no of threads to run in concurrent. If no idea, leave as it is. Or take advice from developer. To increase speed."
+    },
+    "driver_path": {
+        "value": "/home/narendran/Documents/chromedriver",
+        "description": "Absolute path to the chromedriver executable."
+    },
+    "page_scroll_wait": {
+        "value": 0.5,
+        "description": "Await to load the dynamic contents on infinite scrolling."
+    },
+    "page_match_load_timeout": {
+        "value": 60,
+        "description": "Timeout limit for loading the match of any sport."
+    },
+    "page_event_load_timeout": {
+        "value": 60,
+        "description": "Timeout limit for loading the events of any match."
+    }
+}
