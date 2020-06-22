@@ -1,0 +1,7 @@
+venv
+.idea
+.vscode
+*.json
+*.xlsx
+*.txt
+*.html
