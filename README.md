@@ -6,12 +6,12 @@
 
 ## How to run:
 
-- `python3.6 barcode_img_url.py -s "football"`
+- `python3.6 unibet.py -s "football"`
 
 ## For help:
 
-- `python3.6 barcode_img_url.py -h`
+- `python3.6 unibet.py -h`
 
 ## Output:
 
-- Stored in `data/<website-name>.xlsx`
+- Stored in `<sport-name>.xlsx`

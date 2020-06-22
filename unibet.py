@@ -1,10 +1,9 @@
 import time
 import json
-import logging
 import argparse
 import traceback
 from datetime import datetime as dt
-from concurrent.futures import as_completed, ThreadPoolExecutor, ProcessPoolExecutor
+from concurrent.futures import as_completed, ThreadPoolExecutor
 
 import pandas as pd
 from bs4 import BeautifulSoup, NavigableString
@@ -35,13 +34,11 @@ class UnibetMatchScraper(object):
         self.url_events = []
 
     def scroll_to_bottom(self):
-        wait = self.settings["page_scroll_wait"]["value"]
-        log.info("{} no. of seconds will be awaited for posts to be loaded on each scroll".format(wait))
-
         last_height = self.chrome.execute_script("return document.body.scrollHeight")
         initial_height = last_height
         scroll_to = 1000
         equal_for = 0
+        wait = self.settings["page_scroll_wait"]["value"]
         while True:
             self.chrome.execute_script("window.scroll({top: " + str(scroll_to) + ", behavior: 'smooth'});")
             time.sleep(wait)
@@ -60,7 +57,7 @@ class UnibetMatchScraper(object):
             scroll_to += 1000
             last_height = new_height
 
-    def get_event_concurrent(self, url_event):
+    def get_event_concurrent(self, url_event, count):
         chrome = webdriver.Chrome(self.settings["driver_path"]["value"])
         chrome.get(url_event)
 
@@ -68,7 +65,6 @@ class UnibetMatchScraper(object):
         try:
             wait = self.settings["page_event_load_timeout"]["value"]
             WebDriverWait(chrome, wait).until(EC.presence_of_element_located((By.CLASS_NAME, "marketbox-item")))
-            log.info("Loaded the web page...")
             for elem in chrome.find_elements_by_class_name("ui-collapse-more"):
                 elem.click()
                 time.sleep(0.5)
@@ -78,8 +74,10 @@ class UnibetMatchScraper(object):
             for label in labels:
                 children = [child for child in label.children if not isinstance(child, NavigableString)]
                 data.append({
-                    "label": children[0].find("span", class_="longlabel").get_text(),
-                    "value": children[2].get_text()
+                    # "Id": "",
+                    "Label": children[0].find("span", class_="longlabel").get_text(),
+                    "Value": children[2].get_text(),
+                    "Timestamp": ""
                 })
 
             return data
@@ -87,24 +85,27 @@ class UnibetMatchScraper(object):
             log.error("Error on loading the events: {}".format(err))
             exit(1)
         finally:
+            if count % 2 == 0:
+                log.info("{} has been loaded so far ...".format(count))
             chrome.close()
 
     def get_events(self):
-        log.info("{} of match events has to be fetched in total.".format(len(self.events)))
+        log.info("{} of match events has to be fetched in total.".format(len(self.url_events)))
 
         workers = self.settings["workers"]["value"]
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = [executor.submit(self.get_event_concurrent, url_event) for url_event in self.url_events[:10]]
-
         count = 0
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = []
+            for url_event in self.url_events:
+                count += 1
+                future = executor.submit(self.get_event_concurrent, url_event, count)
+                futures.append(future)
+
         for future in as_completed(futures):
             self.events.extend(future.result())
-            count += 1
-
-            if count % 5 == 0:
-                log.info("{} has been loaded so far ...".format(count))
 
     def get(self):
+        log.info("Started to scrape {}".format(self.url + self.endpoint))
         self.chrome.get(self.url + self.endpoint)
 
         try:
@@ -121,12 +122,14 @@ class UnibetMatchScraper(object):
                     team1, team2 = match.split(" - ")
                     t1, d, t2 = [span.get_text() for span in row.find(class_="cell-market").find_all(class_="price")]
                     self.matches.append({
-                        "match": match,
-                        "team1": team1,
-                        "team2": team2,
-                        "price_t1": t1,
-                        "price_t2": t2,
-                        "price_d": d,
+                        # "Id": "",
+                        "Match": match,
+                        "Team1": team1,
+                        "Team2": team2,
+                        "Quote for T1": t1,
+                        "Quote Draw": d,
+                        "Quote for T2": t2,
+                        "Timestamp": ""
                     })
                     self.url_events.append(self.url + href)
         except (TimeoutException, Exception) as err:

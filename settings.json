@@ -1,6 +1,6 @@
 {
     "workers": {
-        "value": 2,
+        "value": 4,
         "description": "Max. no of threads to run in concurrent. If no idea, leave as it is. Or take advice from developer. To increase speed."
     },
     "driver_path": {
