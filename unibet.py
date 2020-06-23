@@ -58,7 +58,10 @@ class UnibetMatchScraper(object):
             last_height = new_height
 
     def get_event_concurrent(self, url_event, count):
-        chrome = webdriver.Chrome(self.settings["driver_path"]["value"])
+        options = webdriver.ChromeOptions()
+        options.add_argument('--headless')
+
+        chrome = webdriver.Chrome(executable_path=self.settings["driver_path"]["value"], chrome_options=options)
         chrome.get(url_event)
 
         data = []
@@ -74,7 +77,6 @@ class UnibetMatchScraper(object):
             for label in labels:
                 children = [child for child in label.children if not isinstance(child, NavigableString)]
                 data.append({
-                    # "Id": "",
                     "Label": children[0].find("span", class_="longlabel").get_text(),
                     "Value": children[2].get_text(),
                     "Timestamp": ""
@@ -122,7 +124,6 @@ class UnibetMatchScraper(object):
                     team1, team2 = match.split(" - ")
                     t1, d, t2 = [span.get_text() for span in row.find(class_="cell-market").find_all(class_="price")]
                     self.matches.append({
-                        # "Id": "",
                         "Match": match,
                         "Team1": team1,
                         "Team2": team2,
@@ -143,10 +144,10 @@ class UnibetMatchScraper(object):
         writer = pd.ExcelWriter('{}.xlsx'.format(self.args.sport))
 
         df_matches = pd.DataFrame(self.matches)
-        df_matches.to_excel(writer, 'matches', index=False)
+        df_matches.to_excel(writer, 'matches', index=False, engine='xlsxwriter', encoding="UTF-8")
 
         df_events = pd.DataFrame(self.events)
-        df_events.to_excel(writer, 'events', index=False)
+        df_events.to_excel(writer, 'events', index=False, engine='xlsxwriter', encoding="UTF-8")
 
         writer.save()
 
