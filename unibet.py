@@ -1,3 +1,4 @@
+import sys
 import time
 import json
 import argparse
@@ -6,6 +7,7 @@ from datetime import datetime as dt
 from concurrent.futures import as_completed, ThreadPoolExecutor
 
 import pandas as pd
+from sqlalchemy.sql import text
 from bs4 import BeautifulSoup, NavigableString
 
 from selenium import webdriver
@@ -14,6 +16,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support import expected_conditions as EC
 
+from db import get_db_engine
 from logger import get_logger
 
 
@@ -22,8 +25,9 @@ log = get_logger(__file__)
 
 class UnibetMatchScraper(object):
 
-    def __init__(self, settings, args):
+    def __init__(self, settings, dbconfig, args):
         self.settings = settings
+        self.dbconfig = dbconfig
         self.args = args
 
         self.url = "https://www.unibet.fr"
@@ -77,9 +81,8 @@ class UnibetMatchScraper(object):
             for label in labels:
                 children = [child for child in label.children if not isinstance(child, NavigableString)]
                 data.append({
-                    "Label": children[0].find("span", class_="longlabel").get_text(),
-                    "Value": children[2].get_text(),
-                    "Timestamp": ""
+                    "label": children[0].find("span", class_="longlabel").get_text(),
+                    "quoteValue": float(children[2].get_text()),
                 })
 
             return data
@@ -124,13 +127,13 @@ class UnibetMatchScraper(object):
                     team1, team2 = match.split(" - ")
                     t1, d, t2 = [span.get_text() for span in row.find(class_="cell-market").find_all(class_="price")]
                     self.matches.append({
-                        "Match": match,
-                        "Team1": team1,
-                        "Team2": team2,
-                        "Quote for T1": t1,
-                        "Quote Draw": d,
-                        "Quote for T2": t2,
-                        "Timestamp": ""
+                        "gameMatch": match,
+                        "team1": team1,
+                        "team2": team2,
+                        "quoteTeam1": float(t1),
+                        "quoteDraw": float(d),
+                        "quoteTeam2": float(t2),
+                        "quoteForT1": int(float(t1))
                     })
                     self.url_events.append(self.url + href)
         except (TimeoutException, Exception) as err:
@@ -140,20 +143,76 @@ class UnibetMatchScraper(object):
         finally:
             self.chrome.close()
 
+    def delete_from_db(self, conn, query):
+        retry, retry_limit = 0, 5
+        while True:
+            try:
+                if retry >= retry_limit:
+                    log.error("Retry limit exceeded. Database unreachable/query error in query. Exit!")
+                    sys.exit(1)
+
+                conn.execute(query)
+                break
+            except Exception as e:
+                retry += 1
+                log.error(f"Error on deleting data from database. Retrying ({retry}) ...")
+                print(e)
+
+    def save_in_db(self, conn, query, data):
+        log.info(f"{len(data)} rows to be inserted to database.")
+        for idx, row in enumerate(data):
+            retry, retry_limit = 0, 5
+            while True:
+                try:
+                    if retry >= retry_limit:
+                        log.error("Retry limit exceeded. Database unreachable/corrupt in data. Exit!")
+                        sys.exit(1)
+
+                    conn.execute(query, **row)
+                    if (idx + 1) % 50 == 0:
+                        log.info(f"{idx+1} rows inserted ...")
+                    break
+                except Exception as e:
+                    retry += 1
+                    log.error(f"Error on inserting data to database. Retrying ({retry}) ...")
+                    print(e)
+        log.info("Insertion done!")
+
     def save(self):
         writer = pd.ExcelWriter('{}.xlsx'.format(self.args.sport))
-
         df_matches = pd.DataFrame(self.matches)
         df_matches.to_excel(writer, 'matches', index=False, engine='xlsxwriter', encoding="UTF-8")
-
         df_events = pd.DataFrame(self.events)
         df_events.to_excel(writer, 'events', index=False, engine='xlsxwriter', encoding="UTF-8")
-
         writer.save()
+
+        engine = get_db_engine()
+        with engine.connect() as conn:
+            table_main = self.dbconfig["tables"][self.args.sport]["main"]["table_name"]
+            query = text(f"DELETE FROM {table_main}")
+            self.delete_from_db(conn, query)
+            query = text(f"""
+                INSERT INTO {table_main}(gameMatch, team1, team2, quoteTeam1, quoteDraw, quoteTeam2, quoteForT1) 
+                VALUES(:gameMatch, :team1, :team2, :quoteTeam1, :quoteDraw, :quoteTeam2, :quoteForT1);
+            """)
+            print("                 *** Inserting main to database ***               ")
+            self.save_in_db(conn, query, self.matches)
+
+            table_detail = self.dbconfig["tables"][self.args.sport]["detail"]["table_name"]
+            query = text(f"DELETE FROM {table_detail}")
+            self.delete_from_db(conn, query)
+            query = text(f"INSERT INTO {table_detail}(label, quoteValue) VALUES(:label, :quoteValue);")
+            print("                 *** Inserting details to database ***            ")
+            self.save_in_db(conn, query, self.events)
 
 
 def get_settings():
     with open("settings.json", "r") as f:
+        return json.load(f)
+
+
+def get_dbconfig():
+    with open("dbconfig.json", "r") as f:
         return json.load(f)
 
 
@@ -169,8 +228,8 @@ def main():
     start = dt.now()
     log.info("Script starts at: {}".format(start.strftime("%d-%m-%Y %H:%M:%S %p")))
 
-    settings, args = get_settings(), get_args()
-    unibet_match = UnibetMatchScraper(settings, args)
+    settings, dbconfig, args = get_settings(), get_dbconfig(), get_args()
+    unibet_match = UnibetMatchScraper(settings, dbconfig, args)
     unibet_match.get()
     unibet_match.get_events()
     unibet_match.save()
