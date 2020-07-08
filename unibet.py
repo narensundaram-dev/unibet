@@ -116,11 +116,15 @@ class UnibetMatchScraper(object):
         try:
             wait = self.settings["page_match_load_timeout"]["value"]
             WebDriverWait(self.chrome, wait).until(EC.presence_of_element_located((By.CLASS_NAME, "bettingbox-item")))
-            self.scroll_to_bottom()
+            # self.scroll_to_bottom()
             log.info("Loaded the full web page...")
 
             soup = BeautifulSoup(self.chrome.page_source, "html.parser")
-            for date_card in soup.find_all(class_="bettingbox-content"):
+            cards = soup.find_all(class_="bettingbox-content")
+            for idx, date_card in enumerate(cards):
+                if idx == 3:
+                    break
+
                 for row in date_card.find_all(class_="ui-touchlink"):
                     match = row.find(class_="cell-meta").find(class_="cell-event").get_text().strip()
                     href = row.find(class_="cell-meta").find(class_="cell-event").find("a").attrs["href"]
