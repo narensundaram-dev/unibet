@@ -1,3 +1,4 @@
+import re
 import sys
 import time
 import json
@@ -33,7 +34,7 @@ class UnibetMatchScraper(object):
         self.url = "https://www.unibet.fr"
         self.endpoint = "/sport/{}".format(self.args.sport)
         self.chrome = webdriver.Chrome(self.settings["driver_path"]["value"])
-        self.matches = []
+        self.matches = {}
         self.events = []
         self.url_events = []
 
@@ -62,9 +63,10 @@ class UnibetMatchScraper(object):
             last_height = new_height
 
     def get_event_concurrent(self, url_event, count):
+        match_id = re.search(r".*\/(\S+)\.html", url_event).group(1)
+
         options = webdriver.ChromeOptions()
         options.add_argument('--headless')
-
         chrome = webdriver.Chrome(executable_path=self.settings["driver_path"]["value"], chrome_options=options)
         chrome.get(url_event)
 
@@ -81,8 +83,11 @@ class UnibetMatchScraper(object):
             for label in labels:
                 children = [child for child in label.children if not isinstance(child, NavigableString)]
                 data.append({
-                    "label": children[0].find("span", class_="longlabel").get_text(),
+                    "gameMatch": self.matches[match_id]["gameMatch"],
+                    "label": children[0].find("span", class_="longlabel").get_text().encode("utf-8", "ignore").decode("utf-8", "ignore"),
                     "quoteValue": float(children[2].get_text()),
+                    "quoteURL": url_event,
+                    "gameMatchId": match_id
                 })
 
             return data
@@ -90,7 +95,7 @@ class UnibetMatchScraper(object):
             log.error("Error on loading the events: {}".format(err))
             exit(1)
         finally:
-            if count % 2 == 0:
+            if count % 5 == 0:
                 log.info("{} has been loaded so far ...".format(count))
             chrome.close()
 
@@ -122,24 +127,29 @@ class UnibetMatchScraper(object):
             soup = BeautifulSoup(self.chrome.page_source, "html.parser")
             cards = soup.find_all(class_="bettingbox-content")
             for idx, date_card in enumerate(cards):
-                if idx == 3:
+                if idx == self.settings["no_of_days"]["value"]:
                     break
 
                 for row in date_card.find_all(class_="ui-touchlink"):
-                    match = row.find(class_="cell-meta").find(class_="cell-event").get_text().strip()
+                    match = row.find(class_="cell-meta").find(
+                        class_="cell-event").get_text().strip().encode("utf-8", "ignore").decode("utf-8", "ignore")
                     href = row.find(class_="cell-meta").find(class_="cell-event").find("a").attrs["href"]
+                    quote_url = self.url + href
+                    match_id = re.search(r".*\/(\S+)\.html", quote_url).group(1)
                     team1, team2 = match.split(" - ")
                     t1, d, t2 = [span.get_text() for span in row.find(class_="cell-market").find_all(class_="price")]
-                    self.matches.append({
+                    self.matches[match_id] = {
                         "gameMatch": match,
                         "team1": team1,
                         "team2": team2,
                         "quoteTeam1": float(t1),
                         "quoteDraw": float(d),
                         "quoteTeam2": float(t2),
-                        "quoteForT1": int(float(t1))
-                    })
-                    self.url_events.append(self.url + href)
+                        "quoteForT1": int(float(t1)),
+                        "quoteURL": quote_url,
+                        "gameMatchId": match_id
+                    }
+                    self.url_events.append(quote_url)
         except (TimeoutException, Exception) as err:
             log.error("Error on scarping the page: {}".format(err))
             traceback.print_exc()
@@ -173,18 +183,18 @@ class UnibetMatchScraper(object):
                         sys.exit(1)
 
                     conn.execute(query, **row)
-                    if (idx + 1) % 50 == 0:
+                    if (idx + 1) % 100 == 0:
                         log.info(f"{idx+1} rows inserted ...")
                     break
                 except Exception as e:
                     retry += 1
                     log.error(f"Error on inserting data to database. Retrying ({retry}) ...")
                     print(e)
-        log.info("Insertion done!")
+        log.info(f"Insertion done ({len(data)})")
 
     def save(self):
         writer = pd.ExcelWriter('{}.xlsx'.format(self.args.sport))
-        df_matches = pd.DataFrame(self.matches)
+        df_matches = pd.DataFrame(list(self.matches.values()))
         df_matches.to_excel(writer, 'matches', index=False, engine='xlsxwriter', encoding="UTF-8")
         df_events = pd.DataFrame(self.events)
         df_events.to_excel(writer, 'events', index=False, engine='xlsxwriter', encoding="UTF-8")
@@ -196,16 +206,19 @@ class UnibetMatchScraper(object):
             query = text(f"DELETE FROM {table_main}")
             self.delete_from_db(conn, query)
             query = text(f"""
-                INSERT INTO {table_main}(gameMatch, team1, team2, quoteTeam1, quoteDraw, quoteTeam2, quoteForT1) 
-                VALUES(:gameMatch, :team1, :team2, :quoteTeam1, :quoteDraw, :quoteTeam2, :quoteForT1);
+                INSERT INTO {table_main}(gameMatch, team1, team2, quoteTeam1, quoteDraw, quoteTeam2, quoteForT1, quoteURL, gameMatchId) 
+                VALUES(:gameMatch, :team1, :team2, :quoteTeam1, :quoteDraw, :quoteTeam2, :quoteForT1, :quoteURL, :gameMatchId);
             """)
             print("                 *** Inserting main to database ***               ")
-            self.save_in_db(conn, query, self.matches)
+            self.save_in_db(conn, query, list(self.matches.values()))
 
             table_detail = self.dbconfig["tables"][self.args.sport]["detail"]["table_name"]
             query = text(f"DELETE FROM {table_detail}")
             self.delete_from_db(conn, query)
-            query = text(f"INSERT INTO {table_detail}(label, quoteValue) VALUES(:label, :quoteValue);")
+            query = text(f"""
+                INSERT INTO {table_detail}(gameMatch, label, quoteValue, gameMatchId, quoteURL) 
+                VALUES(:gameMatch, :label, :quoteValue, :gameMatchId, :quoteURL);
+            """)
             print("                 *** Inserting details to database ***            ")
             self.save_in_db(conn, query, self.events)
 
