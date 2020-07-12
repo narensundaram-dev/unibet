@@ -33,7 +33,12 @@ class UnibetMatchScraper(object):
 
         self.url = "https://www.unibet.fr"
         self.endpoint = "/sport/{}".format(self.args.sport)
-        self.chrome = webdriver.Chrome(self.settings["driver_path"]["value"])
+
+        options = webdriver.ChromeOptions()
+        options.add_argument('--headless')
+        options.add_argument('--no-sandbox')
+        self.chrome = webdriver.Chrome(self.settings["driver_path"]["value"], chrome_options=options)
+
         self.matches = {}
         self.events = []
         self.url_events = []
