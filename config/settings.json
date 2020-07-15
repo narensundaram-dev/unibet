@@ -22,5 +22,10 @@
     "page_event_load_timeout": {
         "value": 60,
         "description": "Timeout limit for loading the events of any match."
+    },
+    "smtp": {
+        "mail": "xxxx",
+        "password": "xxxx",
+        "to": "xxxx"
     }
 }

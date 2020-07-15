@@ -15,3 +15,8 @@
 ## Output:
 
 - Stored in `<sport-name>.xlsx`
+
+## To set up a Gmail account:
+
+- Create a new Google account.
+- Turn Allow less secure apps to ON. (https://myaccount.google.com/lesssecureapps)

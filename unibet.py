@@ -1,3 +1,4 @@
+import os
 import re
 import sys
 import time
@@ -7,6 +8,7 @@ import traceback
 from datetime import datetime as dt
 from concurrent.futures import as_completed, ThreadPoolExecutor
 
+import yagmail
 import pandas as pd
 from sqlalchemy.sql import text
 from bs4 import BeautifulSoup, NavigableString
@@ -111,7 +113,7 @@ class UnibetMatchScraper(object):
         count = 0
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = []
-            for url_event in self.url_events:
+            for url_event in self.url_events[:1]:
                 count += 1
                 future = executor.submit(self.get_event_concurrent, url_event, count)
                 futures.append(future)
@@ -135,7 +137,7 @@ class UnibetMatchScraper(object):
                 if idx == self.settings["no_of_days"]["value"]:
                     break
 
-                for row in date_card.find_all(class_="ui-touchlink"):
+                for row in date_card.find_all(class_="ui-touchlink")[:1]:
                     match = row.find(class_="cell-meta").find(
                         class_="cell-event").get_text().strip().encode("utf-8", "ignore").decode("utf-8", "ignore")
                     href = row.find(class_="cell-meta").find(class_="cell-event").find("a").attrs["href"]
@@ -188,7 +190,7 @@ class UnibetMatchScraper(object):
                         sys.exit(1)
 
                     conn.execute(query, **row)
-                    if (idx + 1) % 100 == 0:
+                    if (idx + 1) % 1000 == 0:
                         log.info(f"{idx+1} rows inserted ...")
                     break
                 except Exception as e:
@@ -198,13 +200,6 @@ class UnibetMatchScraper(object):
         log.info(f"Insertion done ({len(data)})")
 
     def save(self):
-        writer = pd.ExcelWriter('{}.xlsx'.format(self.args.sport))
-        df_matches = pd.DataFrame(list(self.matches.values()))
-        df_matches.to_excel(writer, 'matches', index=False, engine='xlsxwriter', encoding="UTF-8")
-        df_events = pd.DataFrame(self.events)
-        df_events.to_excel(writer, 'events', index=False, engine='xlsxwriter', encoding="UTF-8")
-        writer.save()
-
         engine = get_db_engine()
         with engine.connect() as conn:
             table_main = self.dbconfig["tables"][self.args.sport]["main"]["table_name"]
@@ -227,14 +222,45 @@ class UnibetMatchScraper(object):
             print("                 *** Inserting details to database ***            ")
             self.save_in_db(conn, query, self.events)
 
+    def notify(self):
+        data_surebet, data_err = [], []
+        table_surebet, table_data_errors = "Nothing to display.", "Nothing to display."
+
+        for match in self.matches.values():
+            q1, q2, q3 = match["quoteTeam1"], match["quoteDraw"], match["quoteTeam2"]
+            if (1/q1 + 1/q2 + 1/q3) < 1.0:
+                data = {}
+                for k in ["gameMatchId", "gameMatch", "quoteTeam1", "quoteDraw", "quoteTeam2"]:
+                    data[k] = match[k]
+                data_surebet.append(data)
+        if data_surebet:
+            table_surebet = pd.DataFrame(data_surebet).to_html()
+
+        # if data_surebet or data_err:
+        if 1 == 1:
+            with open("mailcontent.html", "r") as f:
+                contents = f.read()
+                contents = contents.format(table_surebet=table_surebet, table_data_errors=table_data_errors).replace("\n", "")
+                try:
+                    user, password, to = self.settings["smtp"]["mail"], self.settings["smtp"]["password"], self.settings["smtp"]["to"]
+                    yag = yagmail.SMTP(user=user, password=password)
+                    yag.send(to=to, subject='Unibet Scrapy', contents=contents)
+                    log.info(f"Validation check. Email sent to {to}.")
+                except:
+                    log.error("Error on sending the email.. Please check the credentials provided in settings.json")
+        else:
+            log.error("Validation passed. No email is triggered.")
+
 
 def get_settings():
-    with open("settings.json", "r") as f:
+    fp = os.path.join(os.getcwd(), "config", "settings.json")
+    with open(fp, "r") as f:
         return json.load(f)
 
 
 def get_dbconfig():
-    with open("dbconfig.json", "r") as f:
+    fp = os.path.join(os.getcwd(), "config", "dbconfig.json")
+    with open(fp, "r") as f:
         return json.load(f)
 
 
@@ -254,7 +280,8 @@ def main():
     unibet_match = UnibetMatchScraper(settings, dbconfig, args)
     unibet_match.get()
     unibet_match.get_events()
-    unibet_match.save()
+    unibet_match.notify()
+    # unibet_match.save()
 
     end = dt.now()
     log.info("Script ends at: {}".format(end.strftime("%d-%m-%Y %H:%M:%S %p")))
