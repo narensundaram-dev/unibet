@@ -4,4 +4,4 @@ venv
 .vscode
 *.xlsx
 *.html
-dbconfig.json
+.env

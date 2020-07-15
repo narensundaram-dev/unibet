@@ -1,3 +1,4 @@
+import os
 import sys
 import json
 from pprint import pprint
@@ -8,7 +9,8 @@ from sqlalchemy import create_engine
 
 
 def get_db_engine(echo=False):
-    with open("dbconfig.json", "r") as f:
+    fp = os.path.join("config", "dbconfig.json")
+    with open(fp, "r") as f:
         dbconfig = json.load(f)
         host, database = dbconfig["host"], dbconfig["database"]
         username, password = dbconfig["username"], dbconfig["password"]

@@ -1,0 +1,24 @@
+{
+    "host": "x.xxx.xx.xxx",
+    "database": "xxxx",
+    "username": "xxxx",
+    "password": "xxxx",
+    "tables": {
+        "football": {
+            "main": {
+                "table_name": "unibet_football_main"
+            },
+            "detail": {
+                "table_name": "unibet_football_details"
+            }
+        },
+        "baseball": {
+            "main": {
+                "table_name": "unibet_basetball_main"
+            },
+            "detail": {
+                "table_name": "unibet_basetball_details"
+            }
+        }
+    }
+}
