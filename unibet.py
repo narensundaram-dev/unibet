@@ -214,7 +214,7 @@ class UnibetMatchScraper(object):
                         sys.exit(1)
 
                     conn.execute(query, **row)
-                    if (idx + 1) % 1000 == 0:
+                    if (idx + 1) % 2000 == 0:
                         log.info(f"{idx+1} rows inserted ...")
                     break
                 except Exception as e:
@@ -362,7 +362,7 @@ def main():
     unibet_match.get()
     unibet_match.get_events()
     unibet_match.notify()
-    # unibet_match.save()
+    unibet_match.save()
 
     end = dt.now()
     log.info("Script ends at: {}".format(end.strftime("%d-%m-%Y %H:%M:%S %p")))

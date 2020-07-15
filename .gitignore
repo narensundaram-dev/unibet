@@ -5,3 +5,4 @@ venv
 *.xlsx
 *.html
 .env
+dbconfig.json
