@@ -8,6 +8,12 @@ import traceback
 from datetime import datetime as dt
 from concurrent.futures import as_completed, ThreadPoolExecutor
 
+import email, smtplib, ssl
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
 import yagmail
 import pandas as pd
 from sqlalchemy.sql import text
@@ -316,19 +322,44 @@ class UnibetMatchScraper(object):
                     "PFA. The unibet script yields the attached results on doing the validation check.", "\n\n",
                     "Thanks!"
                 ]
-                user, password, to = self.settings["smtp"]["mail"], self.settings["smtp"]["password"], self.settings["smtp"]["to"]
-                yag = yagmail.SMTP(user=user, password=password)
-                yag.send(
-                    to=to, 
-                    subject='Alert | Unibet Scraper.', 
-                    contents=contents, 
-                    attachments=attachments
-                )
-                log.info(f"Validation check. Email sent to {to}.")
-            except:
+                subject, body = "Alert | Unibet Scraper", "\n".join(contents)
+                self.send_mail(subject, body)
+            except Exception as err:
                 log.error("Error on sending the email.. Please check the credentials provided in settings.json")
+                print("Error: ", err)
         else:
             log.error("Validation passed. No email is triggered.")
+
+    def send_mail(self, subject, body, attachments=[]):
+        server, port = self.settings["smtp"]["server"], self.settings["smtp"]["port"]
+        username, password = self.settings["smtp"]["username"], self.settings["smtp"]["password"]
+        from_, to = self.settings["smtp"]["from"], self.settings["smtp"]["to"]
+
+        message = MIMEMultipart()
+        message["From"], message["To"] = from_, to
+        message["Subject"] = subject
+        message.attach(MIMEText(body, "plain"))
+
+        if attachments:
+            for fp in attachments:
+                with open(fp, "rb") as attachment:
+                    part = MIMEBase("application", "octet-stream")
+                    part.set_payload(attachment.read())
+                    encoders.encode_base64(part)
+
+                    filename = os.path.split(fp)[-1]
+                    part.add_header(
+                        "Content-Disposition",
+                        f"attachment; filename= {filename}",
+                    )
+                    message.attach(part)
+
+        body = message.as_string()
+        context = ssl.create_default_context()
+        with smtplib.SMTP_SSL(server, port, context=context) as server:
+            server.login(username, password)
+            server.sendmail(from_, to, body)
+        log.info(f"Validation check. Email sent to {to}!.")
 
 
 def get_settings():

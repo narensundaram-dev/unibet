@@ -24,8 +24,11 @@
         "description": "Timeout limit for loading the events of any match."
     },
     "smtp": {
-        "mail": "xxxx",
+        "server": "xxxx",
+        "port": -1,
+        "username": "xxxx",
         "password": "xxxx",
+        "from": "xxxx",
         "to": "xxxx"
     }
 }
