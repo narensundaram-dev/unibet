@@ -4,5 +4,4 @@ venv
 .vscode
 *.xlsx
 *.html
-.env
 *.pvt.json

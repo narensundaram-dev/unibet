@@ -10,9 +10,10 @@ from concurrent.futures import as_completed, ThreadPoolExecutor
 
 import email, smtplib, ssl
 from email import encoders
+from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 
 import yagmail
 import pandas as pd
@@ -343,20 +344,16 @@ class UnibetMatchScraper(object):
         if attachments:
             for fp in attachments:
                 with open(fp, "rb") as attachment:
-                    part = MIMEBase("application", "octet-stream")
-                    part.set_payload(attachment.read())
-                    encoders.encode_base64(part)
-
-                    filename = os.path.split(fp)[-1]
-                    part.add_header(
-                        "Content-Disposition",
-                        f"attachment; filename= {filename}",
+                    part = MIMEApplication(
+                        attachment.read(),
+                        Name=os.path.basename(fp)
                     )
-                    message.attach(part)
+                part['Content-Disposition'] = f'attachment; filename="{os.path.basename(fp)}"'
+                message.attach(part)
 
         body = message.as_string()
-        context = ssl.create_default_context()
-        with smtplib.SMTP_SSL(server, port, context=context) as server:
+        with smtplib.SMTP(server, port) as server:
+            server.starttls()
             server.login(username, password)
             server.sendmail(from_, to, body)
         log.info(f"Validation check. Email sent to {to}!.")
