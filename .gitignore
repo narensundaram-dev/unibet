@@ -3,5 +3,4 @@ venv
 .idea
 .vscode
 *.xlsx
-*.html
 *.pvt.json

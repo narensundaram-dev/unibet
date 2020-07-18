@@ -17,6 +17,7 @@ from email.mime.application import MIMEApplication
 
 import yagmail
 import pandas as pd
+from jinja2 import Template
 from sqlalchemy.sql import text
 from bs4 import BeautifulSoup, NavigableString
 
@@ -304,26 +305,16 @@ class UnibetMatchScraper(object):
             return data
 
     def notify(self):
-        attachments = []
-
         data_surebet, data_err = self.check_surebet(), self.check_errors()
-        if data_surebet:
-            fp_surebet = os.path.join("output", "surebet.xlsx")
-            pd.DataFrame(data_surebet).to_excel(fp_surebet, index=False)
-            attachments.append(fp_surebet)
-        if data_err:
-            fp_err = os.path.join("output", "errors.xlsx")
-            pd.DataFrame(data_err).to_excel(fp_err, index=False)
-            attachments.append(fp_err)
 
         if data_surebet or data_err:
             try:
-                contents = [
-                    "Hi", "\n"
-                    "PFA. The unibet script yields the attached results on doing the validation check.", "\n\n",
-                    "Thanks!"
-                ]
-                subject, body = "Alert | Unibet Scraper", "\n".join(contents)
+                with open("mail_alert.html", "r") as f:
+                    subject, content = "Alert | Unibet Scraper", f.read()
+                    table_surebet = pd.DataFrame(data_surebet).to_html(index=False, classes=["table"]) if data_surebet else "Nothing to display."
+                    table_errors = pd.DataFrame(data_err).to_html(index=False, classes=["table"]) if data_err else "Nothing to display."
+                    body = Template(content).render(table_surebet=table_surebet, table_errors=table_errors)
+
                 self.send_mail(subject, body)
             except Exception as err:
                 log.error("Error on sending the email.. Please check the credentials provided in settings.json")
@@ -339,17 +330,16 @@ class UnibetMatchScraper(object):
         message = MIMEMultipart()
         message["From"], message["To"] = from_, to
         message["Subject"] = subject
-        message.attach(MIMEText(body, "plain"))
+        message.attach(MIMEText(body, "html"))
 
-        if attachments:
-            for fp in attachments:
-                with open(fp, "rb") as attachment:
-                    part = MIMEApplication(
-                        attachment.read(),
-                        Name=os.path.basename(fp)
-                    )
-                part['Content-Disposition'] = f'attachment; filename="{os.path.basename(fp)}"'
-                message.attach(part)
+        for fp in attachments:
+            with open(fp, "rb") as attachment:
+                part = MIMEApplication(
+                    attachment.read(),
+                    Name=os.path.basename(fp)
+                )
+            part['Content-Disposition'] = f'attachment; filename="{os.path.basename(fp)}"'
+            message.attach(part)
 
         body = message.as_string()
         with smtplib.SMTP(server, port) as server:
