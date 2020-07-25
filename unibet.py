@@ -140,15 +140,14 @@ class UnibetMatchScraper(object):
         try:
             wait = self.settings["page_match_load_timeout"]["value"]
             WebDriverWait(self.chrome, wait).until(EC.presence_of_element_located((By.CLASS_NAME, "bettingbox-item")))
-            # self.scroll_to_bottom()
+            self.scroll_to_bottom()
             log.info("Loaded the web page...")
 
             soup = BeautifulSoup(self.chrome.page_source, "html.parser")
             cards = soup.find_all(class_="bettingbox-content")
-            for idx, date_card in enumerate(cards):
-                if idx == self.settings["no_of_days"]["value"]:
-                    break
+            limit = self.settings["no_of_days"]["value"]
 
+            for date_card in cards[:limit+1]:
                 for row in date_card.find_all(class_="ui-touchlink"):
                     match = row.find(class_="cell-meta").find(
                         class_="cell-event").get_text().strip().encode("utf-8", "ignore").decode("utf-8", "ignore")
@@ -170,7 +169,7 @@ class UnibetMatchScraper(object):
                     }
                     self.url_events.append(quote_url)
         except (TimeoutException, Exception) as err:
-            log.error("Error on scarping the page: {}".format(err))
+            log.error("Error on scraping the page: {}".format(err))
             traceback.print_exc()
             exit(1)
         finally:
@@ -218,11 +217,12 @@ class UnibetMatchScraper(object):
             while True:
                 try:
                     if retry >= retry_limit:
-                        log.error("Retry limit exceeded. Database unreachable/corrupt in data. Exit!")
-                        sys.exit(1)
+                        log.error("Retry limit exceeded. Database unreachable/corrupt in data. Skipped!")
+                        break
+                        # sys.exit(1)
 
                     conn.execute(query, **row)
-                    if (idx + 1) % 2000 == 0:
+                    if (idx + 1) % 10000 == 0:
                         log.info(f"{idx+1} rows inserted ...")
                     break
                 except Exception as e:
@@ -235,8 +235,8 @@ class UnibetMatchScraper(object):
         engine = get_db_engine()
         with engine.connect() as conn:
             table_main = self.dbconfig["tables"][self.args.sport]["main"]["table_name"]
-            query = text(f"DELETE FROM {table_main}")
-            self.delete_from_db(conn, query)
+            # query = text(f"DELETE FROM {table_main}")
+            # self.delete_from_db(conn, query)
             query = text(f"""
                 INSERT INTO {table_main}(gameMatch, team1, team2, quoteTeam1, quoteDraw, quoteTeam2, quoteForT1, quoteURL, gameMatchId) 
                 VALUES(:gameMatch, :team1, :team2, :quoteTeam1, :quoteDraw, :quoteTeam2, :quoteForT1, :quoteURL, :gameMatchId);
@@ -245,8 +245,8 @@ class UnibetMatchScraper(object):
             self.save_in_db(conn, query, list(self.matches.values()))
 
             table_detail = self.dbconfig["tables"][self.args.sport]["detail"]["table_name"]
-            query = text(f"DELETE FROM {table_detail}")
-            self.delete_from_db(conn, query)
+            # query = text(f"DELETE FROM {table_detail}")
+            # self.delete_from_db(conn, query)
             query = text(f"""
                 INSERT INTO {table_detail}(gameMatch, label, quoteValue, gameMatchId, quoteURL) 
                 VALUES(:gameMatch, :label, :quoteValue, :gameMatchId, :quoteURL);
@@ -379,7 +379,7 @@ def main():
     unibet_match = UnibetMatchScraper(settings, dbconfig, args)
     unibet_match.get()
     unibet_match.get_events()
-    unibet_match.notify()
+    # unibet_match.notify()
     unibet_match.save()
 
     end = dt.now()
