@@ -228,7 +228,7 @@ class UnibetMatchScraper(object):
                 except Exception as e:
                     retry += 1
                     log.error(f"Error on inserting data to database. Retrying ({retry}) ...")
-                    print(e)
+                    log.debug(e)
         log.info(f"Insertion done ({len(data)})")
 
     def save(self):
@@ -379,7 +379,7 @@ def main():
     unibet_match = UnibetMatchScraper(settings, dbconfig, args)
     unibet_match.get()
     unibet_match.get_events()
-    # unibet_match.notify()
+    unibet_match.notify()
     unibet_match.save()
 
     end = dt.now()
