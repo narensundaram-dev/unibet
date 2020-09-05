@@ -325,10 +325,10 @@ class UnibetMatchScraper(object):
     def send_mail(self, subject, body, attachments=[]):
         server, port = self.settings["smtp"]["server"], self.settings["smtp"]["port"]
         username, password = self.settings["smtp"]["username"], self.settings["smtp"]["password"]
-        from_, to = self.settings["smtp"]["from"], self.settings["smtp"]["to"]
+        from_, to = self.settings["smtp"]["from"], self.settings["smtp"]["to"].split(",")
 
         message = MIMEMultipart()
-        message["From"], message["To"] = from_, to
+        message["From"], message["To"] = from_, ",".join(to)
         message["Subject"] = subject
         message.attach(MIMEText(body, "html"))
 
